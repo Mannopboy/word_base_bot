@@ -1,8 +1,9 @@
+import random
+
 from aiogram import Dispatcher, Bot, types, executor
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher.filters import Text
 from aiogram.dispatcher import FSMContext
-import random
+from aiogram.dispatcher.filters import Text
 
 from backend.base import base as db
 from backend.keyboards.keyboard import start_keyboard, word_inline_keyboard, book_reply_keyboard, chap_reply_keyboard, \
@@ -13,6 +14,11 @@ bot = Bot('6726035555:AAG4HaGtIkSJjmHVETabfneUbSjnWuvRpVc')
 dp = Dispatcher(bot, storage=MemoryStorage())
 
 storage = MemoryStorage()
+book_status = False
+chap_status = False
+words_list = []
+book_id = 0
+chap_id = 0
 
 
 async def on_startup(_):
@@ -34,13 +40,18 @@ async def start(message: types.Message):
 
 @dp.message_handler(Text(equals="So'z so'rashni boshlash"))
 async def start_ask_word(message: types.Message):
+    global book_status, chap_status
+    book_status = False
+    chap_status = False
     await message.answer("So'z so'rash uchun kitob yoki bobni tanlang", reply_markup=book_inline_keyboard())
 
 
 @dp.callback_query_handler(text='book')
 async def answer_word(callback: types.CallbackQuery):
     books = await db.get_books(callback.message['chat']['id'])
+    global book_status
     if books:
+        book_status = True
         await callback.message.reply(f"So'rash uchun kitoblardan birni tanlang",
                                      reply_markup=book_reply_keyboard(books))
 
@@ -48,15 +59,11 @@ async def answer_word(callback: types.CallbackQuery):
 @dp.callback_query_handler(text='chap')
 async def answer_word(callback: types.CallbackQuery):
     chaps = await db.get_chaps_for_word(callback.message['chat']['id'])
+    global chap_status
     if chaps:
-        await callback.message.reply(f"So'rash uchun kitoblardan birni tanlang",
+        chap_status = True
+        await callback.message.reply(f"So'rash uchun boblardan birni tanlang",
                                      reply_markup=chap_reply_keyboard(chaps))
-
-
-# @dp.message_handler()
-# async def text(message: types.Message):
-#     book_id = await db.get_book(message['from']['id'], message['text'])
-#     print(book_id)
 
 
 @dp.message_handler(Text(equals="Kitob qo'shish"))
@@ -85,6 +92,7 @@ async def add_chap(message: types.Message):
 @dp.message_handler(Text(equals="Barcha so'zlar"))
 async def all_words(message: types.Message):
     words = await db.get_words(message['from']['id'])
+    print(message)
     if words:
         text = ''
         for word in words:
@@ -204,22 +212,36 @@ async def add_book_state(message: types.Message, state: FSMContext) -> None:
 
 @dp.callback_query_handler(text='answer')
 async def answer_word(callback: types.CallbackQuery):
-    user_id = callback['from']['id']
+    global book_id
     word = callback['message']['text']
-    answer = await db.get_word(user_id, word)
+    answer = await db.get_word(book_id, word)
     await callback.message.answer(f'<i> {answer} </i>', parse_mode=types.ParseMode.HTML)
 
 
 @dp.callback_query_handler(text='next_word')
 async def next_question(callback: types.CallbackQuery):
-    global word_ask, list_word
+    global words_list
     message = callback['message']
-    if list_word and word_ask:
-        new_word = random.choice(list_word)
-        await message.answer(f"{new_word['word']}", reply_markup=word_inline_keyboard())
-        list_word.remove(new_word)
+    if words_list:
+        new_word = random.choice(words_list)
+        await message.answer(f"{new_word['name']}", reply_markup=word_inline_keyboard())
+        words_list.remove(new_word)
     else:
         await message.answer(f"Boshqa so'z qolmadi", reply_markup=start_keyboard())
+
+
+@dp.message_handler()
+async def text(message: types.Message):
+    global book_status, chap_status, words_list, book_id
+    if book_status and not chap_status:
+        book_id = await db.get_book(message['from']['id'], message.text)
+        words_list = await db.get_words_in_book(book_id)
+        new_word = random.choice(words_list)
+        await message.reply(f"{message.text} dan so'z sorashni boshlandi", reply_markup=start_keyboard())
+        await message.answer(f"{new_word['name']}", reply_markup=word_inline_keyboard())
+        words_list.remove(new_word)
+    elif chap_status and not book_status:
+        print(message.text)
 
 
 executor.start_polling(dp, on_startup=on_startup)

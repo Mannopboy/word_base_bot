@@ -75,14 +75,18 @@ async def add_chap(state):
             return False
 
 
-async def get_words(user_id):
+async def get_words_in_book(book_id):
+    chaps = cur.execute("SELECT * FROM chap").fetchall()
     words = cur.execute("SELECT * FROM word").fetchall()
+    chaps_id_list = []
     list = []
+    for chap in chaps:
+        if chap[1] == book_id:
+            chaps_id_list.append(chap[0])
     for word in words:
-        if word[1] == user_id:
+        if word[2] in chaps_id_list:
             info = {
-                'word': word[3],
-                'answer': word[2]
+                'name': word[3]
             }
             list.append(info)
     return list
@@ -136,12 +140,17 @@ async def get_chaps(user_id):
     return list
 
 
-async def get_word(user_id, text):
+async def get_word(book_id, text):
+    chaps = cur.execute("SELECT * FROM chaps").fetchall()
     words = cur.execute("SELECT * FROM word").fetchall()
     answer = None
+    chaps_id_list = []
+    for chap in chaps:
+        if chap[1] == book_id:
+            chaps_id_list.append(chap[0])
     for word in words:
-        if word[1] == user_id and word[3] == text:
-            answer = word[2]
+        if word[2] in chaps_id_list and word[3] == text:
+            answer = word[1]
     return answer
 
 
