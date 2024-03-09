@@ -1,13 +1,18 @@
 from aiogram import Dispatcher, Bot, types, executor
+from aiogram.contrib.fsm_storage.memory import MemoryStorage
+from aiogram.dispatcher.filters import Text
+from aiogram.dispatcher import FSMContext
+import random
+
 from backend.base import base as db
-from backend.keyboards.keyboard import start_keyboard
+from backend.keyboards.keyboard import start_keyboard, word_inline_keyboard, book_reply_keyboard, chap_reply_keyboard, \
+    book_inline_keyboard
+from backend.states.state import BookState, ChapState, WordState
 
 bot = Bot('6726035555:AAG4HaGtIkSJjmHVETabfneUbSjnWuvRpVc')
-dp = Dispatcher(bot)
+dp = Dispatcher(bot, storage=MemoryStorage())
 
-word = None
-word_status = False
-word_answer_status = False
+storage = MemoryStorage()
 
 
 async def on_startup(_):
@@ -27,36 +32,194 @@ async def start(message: types.Message):
                            reply_markup=start_keyboard())
 
 
-# @dp.message_handler(commands=["So'z qo'shish"])
-# async def add_word(message: types.Message):
-#
-#     await message.answer("Yangi so'zni kiriting")
-#
+@dp.message_handler(Text(equals="So'z so'rashni boshlash"))
+async def start_ask_word(message: types.Message):
+    await message.answer("So'z so'rash uchun kitob yoki bobni tanlang", reply_markup=book_inline_keyboard())
 
-@dp.message_handler()
-async def text(message: types.Message):
-    global word_status, word_answer_status, word
-    print(word_status)
-    print(word_answer_status)
-    print(word)
-    if word_status and not word_answer_status:
-        print(message)
-        # await db.add_word(message['from']['id'], )
-        word_answer_status = True
-        word_status = message['text']
-        await message.answer("Yangi so'zni tarjimasini kiriting")
-    elif word_status and word_answer_status:
-        print(message)
-        print(True)
-        await db.add_word(message['from']['id'], word, message['text'])
-        word_answer_status = False
-        word_status = False
-        await message.answer("Yangi so'zni kiritildi")
-    elif message['text'] == "So'z qo'shish":
-        word_status = True
-        await message.answer("Yangi so'zni kiriting")
+
+@dp.callback_query_handler(text='book')
+async def answer_word(callback: types.CallbackQuery):
+    books = await db.get_books(callback.message['chat']['id'])
+    if books:
+        await callback.message.reply(f"So'rash uchun kitoblardan birni tanlang",
+                                     reply_markup=book_reply_keyboard(books))
+
+
+@dp.callback_query_handler(text='chap')
+async def answer_word(callback: types.CallbackQuery):
+    chaps = await db.get_chaps_for_word(callback.message['chat']['id'])
+    if chaps:
+        await callback.message.reply(f"So'rash uchun kitoblardan birni tanlang",
+                                     reply_markup=chap_reply_keyboard(chaps))
+
+
+# @dp.message_handler()
+# async def text(message: types.Message):
+#     book_id = await db.get_book(message['from']['id'], message['text'])
+#     print(book_id)
+
+
+@dp.message_handler(Text(equals="Kitob qo'shish"))
+async def add_book(message: types.Message):
+    await message.answer("Yangi kitob nomini kiriting")
+    await BookState.name.set()
+
+
+@dp.message_handler(Text(equals="Orqaga"))
+async def back(message: types.Message):
+    await bot.send_message(chat_id=message['from']['id'],
+                           text="Bosh sahifa",
+                           reply_markup=start_keyboard())
+
+
+@dp.message_handler(Text(equals="Bob qo'shish"))
+async def add_chap(message: types.Message):
+    books = await db.get_books(message['from']['id'])
+    if books:
+        await message.answer("Bob qo'shish uchun kitobni tanlang", reply_markup=book_reply_keyboard(books))
+        await ChapState.book_id.set()
     else:
-        print('Nigga')
+        await message.answer("Bob qo'shishdan oldin kitob qo'shing")
+
+
+@dp.message_handler(Text(equals="Barcha so'zlar"))
+async def all_words(message: types.Message):
+    words = await db.get_words(message['from']['id'])
+    if words:
+        text = ''
+        for word in words:
+            text += f"{word['word']} - {word['answer']} \n"
+        await message.answer(text)
+    else:
+        await message.answer("So'zlar yo'q")
+
+
+@dp.message_handler(Text(equals="Barcha boblar"))
+async def all_chaps(message: types.Message):
+    books = await db.get_chaps(message['from']['id'])
+    if books:
+        for book in books:
+            text = f"{book['book']}: \n"
+            for chap in book['chaps']:
+                text += f"   {chap['name']} \n"
+            await message.answer(text)
+    else:
+        await message.answer("Boblar yo'q")
+
+
+@dp.message_handler(Text(equals="Barcha kitoblar"))
+async def all_books(message: types.Message):
+    books = await db.get_books(message['from']['id'])
+    if books:
+        text = ''
+        for book in books:
+            text += f"{book['name']}\n"
+        await message.answer(text)
+    else:
+        await message.answer("Kitoblar yo'q")
+
+
+@dp.message_handler(Text(equals="So'z qo'shish"))
+async def add_chap_for_word(message: types.Message):
+    books = await db.get_books(message['from']['id'])
+    if books:
+        await message.answer("So'z qo'shish uchun kitobni tanlang", reply_markup=book_reply_keyboard(books))
+        await WordState.book_id.set()
+    else:
+        await message.answer("So'z qo'shishdan oldin kitob qo'shing")
+
+
+@dp.message_handler(state=WordState.book_id)
+async def get_book_name_for_word(message: types.Message, state: FSMContext) -> None:
+    book_id = await db.get_book(message['from']['id'], message['text'])
+    async with state.proxy() as data:
+        data['book_id'] = book_id
+    chaps = await db.get_book_chaps(book_id)
+    await message.reply("So'z qo'shish uchun bobni tanlang", reply_markup=chap_reply_keyboard(chaps))
+    await WordState.next()
+
+
+@dp.message_handler(state=WordState.chap_id)
+async def get_chap_name_for_word(message: types.Message, state: FSMContext) -> None:
+    async with state.proxy() as data:
+        chap_id = await db.get_chap(data['book_id'], message['text'])
+        async with state.proxy() as data:
+            data['chap_id'] = chap_id
+        await message.reply("Yangi so'zni kiriting")
+        await WordState.next()
+
+
+@dp.message_handler(state=WordState.name)
+async def get_name_for_word(message: types.Message, state: FSMContext) -> None:
+    async with state.proxy() as data:
+        data['name'] = message['text']
+    await message.reply("Yangi so'zni tarjimasini kiriting")
+    await WordState.next()
+
+
+@dp.message_handler(state=WordState.answer)
+async def get_answer_for_word(message: types.Message, state: FSMContext) -> None:
+    async with state.proxy() as data:
+        data['answer'] = message['text']
+        print(data)
+    status = await db.add_word(state)
+    if status:
+        await message.reply("Yangi so'z kiritildi !!!", reply_markup=start_keyboard())
+    else:
+        await message.answer("Bunday so'z bor")
+    await state.finish()
+
+
+@dp.message_handler(state=ChapState.book_id)
+async def get_book_name(message: types.Message, state: FSMContext) -> None:
+    async with state.proxy() as data:
+        data['book_id'] = await db.get_book(message['from']['id'], message['text'])
+    await message.reply("Yangi bob nomini kiriting")
+    await ChapState.next()
+
+
+@dp.message_handler(state=ChapState.name)
+async def add_chap_state(message: types.Message, state: FSMContext) -> None:
+    async with state.proxy() as data:
+        data['name'] = message['text']
+    status = await db.add_chap(state)
+    if status:
+        await message.reply("Yangi bob kiritildi !!!", reply_markup=start_keyboard())
+    await state.finish()
+
+
+@dp.message_handler(state=BookState.name)
+async def add_book_state(message: types.Message, state: FSMContext) -> None:
+    async with state.proxy() as data:
+        data['user_id'] = message['from']['id']
+        data['name'] = message['text']
+
+    status = await db.add_book(state)
+    if status:
+        await message.reply("Yangi kitob kiritildi !!!", reply_markup=start_keyboard())
+    else:
+        await message.answer("Bunday kitob bor")
+    await state.finish()
+
+
+@dp.callback_query_handler(text='answer')
+async def answer_word(callback: types.CallbackQuery):
+    user_id = callback['from']['id']
+    word = callback['message']['text']
+    answer = await db.get_word(user_id, word)
+    await callback.message.answer(f'<i> {answer} </i>', parse_mode=types.ParseMode.HTML)
+
+
+@dp.callback_query_handler(text='next_word')
+async def next_question(callback: types.CallbackQuery):
+    global word_ask, list_word
+    message = callback['message']
+    if list_word and word_ask:
+        new_word = random.choice(list_word)
+        await message.answer(f"{new_word['word']}", reply_markup=word_inline_keyboard())
+        list_word.remove(new_word)
+    else:
+        await message.answer(f"Boshqa so'z qolmadi", reply_markup=start_keyboard())
 
 
 executor.start_polling(dp, on_startup=on_startup)
