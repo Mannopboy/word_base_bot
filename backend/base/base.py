@@ -1,6 +1,6 @@
 import sqlite3 as sq
 
-db = sq.connect('base1.db')
+db = sq.connect('base.db')
 cur = db.cursor()
 
 
@@ -40,6 +40,8 @@ async def add_user(user_id, username, name):
 
 async def add_word(state):
     async with state.proxy() as data:
+        print(data['chap_id'])
+        print(data['name'])
         word = cur.execute(
             "SELECT * FROM word WHERE (chap_id, text) = ('%s', '%s')" % (data['chap_id'], data['name'])).fetchone()
         if not word:
@@ -92,6 +94,18 @@ async def get_words_in_book(book_id):
     return list
 
 
+async def get_words_in_chap(chap_id):
+    words = cur.execute("SELECT * FROM word").fetchall()
+    list = []
+    for word in words:
+        if word[2] == chap_id:
+            info = {
+                'name': word[3]
+            }
+            list.append(info)
+    return list
+
+
 async def get_chaps_for_word(user_id):
     chaps = cur.execute("SELECT * FROM chap").fetchall()
     books = cur.execute("SELECT * FROM book").fetchall()
@@ -101,13 +115,15 @@ async def get_chaps_for_word(user_id):
         if book[1] == user_id:
             info = {
                 'id': book[0],
+                'name': book[2],
             }
             list_books.append(info)
     for book in list_books:
         for chap in chaps:
             if chap[1] == book['id']:
                 info_chap = {
-                    'name': chap[2]
+                    'name': chap[2],
+                    'text': f"{book['name']} - {chap[2]}"
                 }
                 list.append(info_chap)
     return list
@@ -141,7 +157,7 @@ async def get_chaps(user_id):
 
 
 async def get_word(book_id, text):
-    chaps = cur.execute("SELECT * FROM chaps").fetchall()
+    chaps = cur.execute("SELECT * FROM chap").fetchall()
     words = cur.execute("SELECT * FROM word").fetchall()
     answer = None
     chaps_id_list = []
@@ -160,7 +176,7 @@ async def get_book_chaps(book_id):
     for chap in chaps:
         if chap[1] == book_id:
             info = {
-                'name': chap[2],
+                'text': chap[2],
             }
             list.append(info)
     return list
@@ -179,12 +195,41 @@ async def get_books(user_id):
 
 
 async def get_book(user_id, name):
+    print(user_id)
+    print(name)
     book = cur.execute(
         "SELECT * FROM book WHERE (user_id, name) = ('%s', '%s')" % (user_id, name)).fetchone()
-    return book[0]
+    if book:
+        return book[0]
+    else:
+        return None
+
+
+async def get_book_next(user_id, name):
+    book = cur.execute(
+        "SELECT * FROM book WHERE (user_id, name) = ('%s', '%s')" % (user_id, name)).fetchone()
+    if book:
+        return book[0]
+    else:
+        return None
+
+
+async def get_chap_next(book_id, name):
+    chap = cur.execute(
+        "SELECT * FROM chap WHERE (book_id, name) = ('%s', '%s')" % (book_id, name)).fetchone()
+    if chap:
+        return chap[0]
+    else:
+        return None
 
 
 async def get_chap(book_id, name):
+    chap = cur.execute(
+        "SELECT * FROM chap WHERE (book_id, name) = ('%s', '%s')" % (book_id, name)).fetchone()
+    return chap[0]
+
+
+async def get_words(user_id):
     chap = cur.execute(
         "SELECT * FROM chap WHERE (book_id, name) = ('%s', '%s')" % (book_id, name)).fetchone()
     return chap[0]

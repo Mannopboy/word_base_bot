@@ -43,7 +43,7 @@ async def start_ask_word(message: types.Message):
     global book_status, chap_status
     book_status = False
     chap_status = False
-    await message.answer("So'z so'rash uchun kitob yoki bobni tanlang", reply_markup=book_inline_keyboard())
+    await message.reply("So'z so'rash uchun kitob yoki bobni tanlang", reply_markup=book_inline_keyboard())
 
 
 @dp.callback_query_handler(text='book')
@@ -92,7 +92,6 @@ async def add_chap(message: types.Message):
 @dp.message_handler(Text(equals="Barcha so'zlar"))
 async def all_words(message: types.Message):
     words = await db.get_words(message['from']['id'])
-    print(message)
     if words:
         text = ''
         for word in words:
@@ -169,7 +168,6 @@ async def get_name_for_word(message: types.Message, state: FSMContext) -> None:
 async def get_answer_for_word(message: types.Message, state: FSMContext) -> None:
     async with state.proxy() as data:
         data['answer'] = message['text']
-        print(data)
     status = await db.add_word(state)
     if status:
         await message.reply("Yangi so'z kiritildi !!!", reply_markup=start_keyboard())
@@ -232,7 +230,7 @@ async def next_question(callback: types.CallbackQuery):
 
 @dp.message_handler()
 async def text(message: types.Message):
-    global book_status, chap_status, words_list, book_id
+    global book_status, chap_status, words_list, book_id, chap_id
     if book_status and not chap_status:
         book_id = await db.get_book(message['from']['id'], message.text)
         words_list = await db.get_words_in_book(book_id)
@@ -241,7 +239,20 @@ async def text(message: types.Message):
         await message.answer(f"{new_word['name']}", reply_markup=word_inline_keyboard())
         words_list.remove(new_word)
     elif chap_status and not book_status:
-        print(message.text)
+        index = None
+        for letter in message['text']:
+            if letter == '-':
+                index = message['text'].index(letter)
+        book_id = await db.get_book_next(message['from']['id'], message['text'][:index - 1])
+        chap_id = await db.get_chap_next(book_id, message['text'][index + 2:])
+        words_list = await db.get_words_in_chap(chap_id)
+        if words_list:
+            new_word = random.choice(words_list)
+            await message.reply(f"{message.text} dan so'z sorashni boshlandi", reply_markup=start_keyboard())
+            await message.answer(f"{new_word['name']}", reply_markup=word_inline_keyboard())
+            words_list.remove(new_word)
+        else:
+            await message.answer(f"Boshqa so'z qolmadi", reply_markup=start_keyboard())
 
 
 executor.start_polling(dp, on_startup=on_startup)

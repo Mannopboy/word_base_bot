@@ -52,7 +52,7 @@ def book_reply_keyboard(books) -> ReplyKeyboardMarkup:
 def chap_reply_keyboard(chaps) -> ReplyKeyboardMarkup:
     list = []
     for chap in chaps:
-        list.append([KeyboardButton(chap['name'])])
+        list.append([KeyboardButton(chap['text'])])
     kb = ReplyKeyboardMarkup(keyboard=list, resize_keyboard=True)
 
     return kb
