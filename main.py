@@ -8,9 +8,9 @@ from aiogram.dispatcher.filters import Text
 from backend.base import base as db
 from backend.keyboards.keyboard import start_keyboard, word_inline_keyboard, book_reply_keyboard, chap_reply_keyboard, \
     book_inline_keyboard
-from backend.states.state import BookState, ChapState, WordState
+from backend.states.state import BookState, ChapState, WordState, WordListState
 
-bot = Bot('6726035555:AAG4HaGtIkSJjmHVETabfneUbSjnWuvRpVc')
+bot = Bot('7210057203:AAFVGqCEn2NP_vyVjVldIU89ACeX-qfeHwI')
 dp = Dispatcher(bot, storage=MemoryStorage())
 
 storage = MemoryStorage()
@@ -136,6 +136,26 @@ async def add_chap_for_word(message: types.Message):
         await message.answer("So'z qo'shishdan oldin kitob qo'shing")
 
 
+@dp.message_handler(Text(equals="Listda so'z qo'shish"))
+async def add_chap_for_word(message: types.Message):
+    books = await db.get_books(message['from']['id'])
+    if books:
+        await message.answer("So'zlar qo'shish uchun kitobni tanlang", reply_markup=book_reply_keyboard(books))
+        await WordListState.book_id.set()
+    else:
+        await message.answer("So'zlar qo'shishdan oldin kitob qo'shing")
+
+
+@dp.message_handler(state=WordListState.book_id)
+async def get_book_name_for_word(message: types.Message, state: FSMContext) -> None:
+    book_id = await db.get_book(message['from']['id'], message['text'])
+    async with state.proxy() as data:
+        data['book_id'] = book_id
+    chaps = await db.get_book_chaps(book_id)
+    await message.reply("So'z qo'shish uchun bobni tanlang", reply_markup=chap_reply_keyboard(chaps))
+    await WordListState.next()
+
+
 @dp.message_handler(state=WordState.book_id)
 async def get_book_name_for_word(message: types.Message, state: FSMContext) -> None:
     book_id = await db.get_book(message['from']['id'], message['text'])
@@ -146,6 +166,16 @@ async def get_book_name_for_word(message: types.Message, state: FSMContext) -> N
     await WordState.next()
 
 
+@dp.message_handler(state=WordListState.chap_id)
+async def get_chap_name_for_word(message: types.Message, state: FSMContext) -> None:
+    async with state.proxy() as data:
+        chap_id = await db.get_chap(data['book_id'], message['text'])
+        async with state.proxy() as data:
+            data['chap_id'] = chap_id
+        await message.reply("Listni kiriting")
+        await WordListState.next()
+
+
 @dp.message_handler(state=WordState.chap_id)
 async def get_chap_name_for_word(message: types.Message, state: FSMContext) -> None:
     async with state.proxy() as data:
@@ -154,6 +184,26 @@ async def get_chap_name_for_word(message: types.Message, state: FSMContext) -> N
             data['chap_id'] = chap_id
         await message.reply("Yangi so'zni kiriting")
         await WordState.next()
+
+
+@dp.message_handler(state=WordListState.list)
+async def get_name_for_word(message: types.Message, state: FSMContext) -> None:
+    words = message.text.split("\n")
+    word_list = []
+
+    for word_pair in words:
+        parts = word_pair.split("-")
+        if len(parts) != 2:
+            # Agar `-` belgisidan ikki qism chiqmasa, xato xabarini yuboring yoki xatoni qaytaring
+            await message.reply(f"Xato: `{word_pair}` formatiga mos kelmaydi.")
+            continue
+
+        name, answer = map(str.strip, parts)
+        word_list.append({"name": name.lower(), "answer": answer.lower()})
+
+    await db.add_words(state, word_list)
+    await message.reply("So'zlar ma'lumotlar bazasiga qo'shildi.")
+    await state.finish()
 
 
 @dp.message_handler(state=WordState.name)

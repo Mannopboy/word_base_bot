@@ -61,6 +61,18 @@ async def add_word(state):
             return False
 
 
+async def add_words(state, words):
+    async with state.proxy() as data:
+        chap_id = data['chap_id']
+        for word in words:
+            name = word['name']
+            answer = word['answer']
+            existing_word = cur.execute("SELECT * FROM word WHERE chap_id = ? AND text = ?", (chap_id, name)).fetchone()
+            if not existing_word:
+                cur.execute("INSERT INTO word (chap_id, text, answer) VALUES (?, ?, ?)", (chap_id, name, answer))
+                db.commit()
+
+
 async def add_book(state):
     async with state.proxy() as data:
         book = cur.execute("SELECT * FROM book WHERE user_id = ? AND name = ?",

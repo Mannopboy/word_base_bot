@@ -15,3 +15,10 @@ class WordState(StatesGroup):
     chap_id = State()
     name = State()
     answer = State()
+
+
+class WordListState(StatesGroup):
+    book_id = State()
+    chap_id = State()
+    list = State()
+

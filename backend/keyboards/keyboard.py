@@ -8,6 +8,7 @@ def start_keyboard() -> ReplyKeyboardMarkup:
         [KeyboardButton("So'z qo'shish"), KeyboardButton("Barcha so'zlar")],
         [KeyboardButton("Bob qo'shish"), KeyboardButton("Barcha boblar")],
         [KeyboardButton("Kitob qo'shish"), KeyboardButton("Barcha kitoblar")],
+        [KeyboardButton("Listda so'z qo'shish")],
     ], resize_keyboard=True)
 
     return kb
